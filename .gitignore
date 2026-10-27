@@ -7,6 +7,11 @@ local.properties
 **/local.properties
 *.jks
 *.keystore
+*.p12
+*signing.properties
+*.db
+*.db-shm
+*.db-wal
 google-services.json
 *-service-account.json
 
