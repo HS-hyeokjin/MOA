@@ -1,0 +1,29 @@
+# Local tools, credentials, and machine-specific configuration
+.tools/
+.env
+.env.*
+!.env.example
+local.properties
+**/local.properties
+*.jks
+*.keystore
+google-services.json
+*-service-account.json
+
+# Build output and IDE metadata
+.gradle/
+**/.gradle/
+**/build/
+.idea/
+*.iml
+.kotlin/
+**/.kotlin/
+.DS_Store
+Thumbs.db
+
+# Runtime data is never source code
+/data/
+/server/data/
+/backups/
+/logs/
+*.log
