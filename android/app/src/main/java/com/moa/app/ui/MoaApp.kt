@@ -93,15 +93,12 @@ fun MoaApp(model: MoaViewModel = viewModel()) {
                     Text("${session.member.displayName}님, 반가워요", style = MaterialTheme.typography.bodyMedium)
                 }
                 TextButton(onClick = model::logout,
-                    enabled = !state.loginBusy && !state.uploading && state.downloading == null && state.busyPosts.isEmpty()) { Text("로그아웃") }
+                    enabled = !state.loginBusy && !state.uploading && state.downloading == null && state.busyPosts.isEmpty() && !state.raceRolling) { Text("로그아웃") }
             }
             when (Destination.valueOf(selected)) {
                 Destination.HOME -> HomeScreen(state, loader, model, { selected = Destination.PHOTOS.name }, pickPhotos)
                 Destination.PHOTOS -> AlbumScreen(state, loader, model, pickPhotos)
-                Destination.GAMES -> Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("우리 가족 게임방", style = MaterialTheme.typography.headlineSmall)
-                    Text("게임은 다음 버전에서 만나요. 지금은 사진으로 일상을 나눠 보세요.")
-                }
+                Destination.GAMES -> RaceScreen(state, model)
             }
         }
     }

@@ -24,6 +24,8 @@ data class MoaState(
     val feedLoaded: Boolean = false,
     val selected: List<Uri> = emptyList(), val caption: String = "", val uploading: Boolean = false,
     val uploadProgress: Float = 0f, val busyPosts: Set<Long> = emptySet(), val downloading: String? = null,
+    val race: RaceGame? = null, val raceLoading: Boolean = false, val raceRolling: Boolean = false,
+    val racePending: Boolean = false, val raceError: String? = null, val lastRoll: RaceRoll? = null,
 )
 
 class MoaViewModel(application: Application) : AndroidViewModel(application) {
@@ -33,6 +35,8 @@ class MoaViewModel(application: Application) : AndroidViewModel(application) {
     val state = mutable.asStateFlow()
     private var uploadId = UUID.randomUUID().toString()
     private var feedJob: Job? = null
+    private val pendingRace = PendingRaceRoll(application)
+    private var raceJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -134,15 +138,65 @@ class MoaViewModel(application: Application) : AndroidViewModel(application) {
             finally { mutable.update { it.copy(downloading = null) } }
         }
     }
+    fun refreshRace() {
+        val current = state.value
+        val session = current.session ?: return
+        if (current.raceLoading || current.raceRolling || current.loginBusy) return
+        mutable.update { it.copy(raceLoading = true, raceError = null) }
+        raceJob = viewModelScope.launch {
+            try {
+                val pending = withContext(Dispatchers.IO) { pendingRace.exists(session) }
+                val game = repository.race(session)
+                if (state.value.session?.token == session.token) mutable.update {
+                    it.copy(race = game, racePending = pending, lastRoll = it.lastRoll?.takeIf { roll -> roll.day == game.today })
+                }
+            } catch (error: Exception) { raceFailure(error) }
+            finally { mutable.update { it.copy(raceLoading = false) } }
+        }
+    }
+    fun rollRace() {
+        val current = state.value
+        val session = current.session ?: return
+        if (current.raceRolling || current.raceLoading || current.loginBusy || current.race == null ||
+            (current.race.remainingRolls <= 0 && !current.racePending)) return
+        mutable.update { it.copy(raceRolling = true, raceError = null) }
+        raceJob = viewModelScope.launch {
+            var refreshAfter = false
+            try {
+                val requestId = withContext(Dispatchers.IO) { pendingRace.getOrCreate(session) }
+                mutable.update { it.copy(racePending = true) }
+                val result = repository.rollRace(session, requestId)
+                withContext(Dispatchers.IO) { pendingRace.clear(session) }
+                if (state.value.session?.token == session.token) mutable.update {
+                    it.copy(race = result.game, lastRoll = result.roll, racePending = false)
+                }
+            } catch (error: Exception) {
+                if (error is ApiException && error.status in listOf(400, 403, 409)) {
+                    try {
+                        withContext(Dispatchers.IO) { pendingRace.clear(session) }
+                        mutable.update { it.copy(racePending = false) }
+                    } catch (storageError: Exception) { raceFailure(storageError) }
+                    refreshAfter = error.status == 409
+                }
+                raceFailure(error)
+            } finally { mutable.update { it.copy(raceRolling = false) } }
+            if (refreshAfter) refreshRace()
+        }
+    }
+    private suspend fun raceFailure(error: Exception) {
+        handle(error)
+        if (state.value.session != null) mutable.update { it.copy(raceError = it.message) }
+    }
     fun logout() {
         val current = state.value
         val session = current.session ?: return
-        if (current.uploading || current.loginBusy || current.downloading != null || current.busyPosts.isNotEmpty()) return
+        if (current.uploading || current.loginBusy || current.downloading != null || current.busyPosts.isNotEmpty() || current.raceRolling) return
         mutable.update { it.copy(loginBusy = true) }
         viewModelScope.launch {
             try {
                 repository.logout(session)
                 feedJob?.cancel()
+                raceJob?.cancel()
                 withContext(Dispatchers.IO) { store.clear() }
                 mutable.value = MoaState(starting = false, serverUrl = session.serverUrl)
             } catch (error: Exception) { handle(error) }

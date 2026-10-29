@@ -54,6 +54,13 @@ class MoaRepository(private val context: Context) {
     suspend fun delete(session: Session, post: Post) { text(request(session, "/api/v1/posts/${post.id}").delete().build()) }
     suspend fun logout(session: Session) { text(request(session, "/api/v1/auth/logout").post(ByteArray(0).toRequestBody()).build()) }
 
+    suspend fun race(session: Session): RaceGame = JSONObject(text(request(session, "/api/v1/games/race").build())).raceGame()
+    suspend fun rollRace(session: Session, requestId: String): RaceOutcome {
+        val json = JSONObject(text(request(session, "/api/v1/games/race/rolls").header("Idempotency-Key", requestId)
+            .post(ByteArray(0).toRequestBody()).build()))
+        return RaceOutcome(json.getJSONObject("game").raceGame(), json.getJSONObject("roll").raceRoll())
+    }
+
     suspend fun upload(session: Session, uris: List<Uri>, caption: String, requestId: String, progress: (Float) -> Unit): Post = withContext(Dispatchers.IO) {
         require(uris.size in 1..5) { "사진을 1~5장 선택해 주세요." }
         val sizes = uris.map { uri ->
